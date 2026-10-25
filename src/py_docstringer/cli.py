@@ -51,6 +51,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> Summary:
+    """Run documentation generation using the supplied command-line arguments.
+
+    Args:
+        args (argparse.Namespace): Options for the folder, model, polling interval,
+            timeout, batch size, overwrite behavior, and dry-run mode.
+
+    Returns:
+        Summary: The result returned by `document_folder`.
+
+    Raises:
+        ConfigurationError: If `OPENROUTER_API_KEY` is not set and dry-run mode is
+            disabled.
+    """
     options = {
         "poll_interval": args.poll_interval,
         "timeout": args.timeout_hours * 3600,
@@ -71,6 +84,11 @@ def _run(args: argparse.Namespace) -> Summary:
 
 
 def _print_summary(summary: Summary) -> None:
+    """Print a summary of the documentation run.
+
+    Args:
+        summary (Summary): Counts and status details for the documentation run.
+    """
     files = pluralize(summary.files, "file", "files")
     definitions = pluralize(summary.definitions, "definition", "definitions")
     docstrings = pluralize(summary.written, "docstring", "docstrings")
@@ -92,6 +110,13 @@ def _print_summary(summary: Summary) -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build and return the command-line argument parser.
+
+    The parser defines options for the folder to scan, model, batch polling and timeout settings, batch size, overwriting docstrings, dry runs, and quiet output.
+
+    Returns:
+        argparse.ArgumentParser: The configured argument parser.
+    """
     parser = argparse.ArgumentParser(
         prog="add-docstrings",
         description=(
