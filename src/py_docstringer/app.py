@@ -54,6 +54,13 @@ class Summary:
 
 @dataclass(frozen=True, slots=True)
 class _PendingDocstring:
+    """Represent a definition and its pending docstring content.
+
+    Attributes:
+        definition (Definition): The definition associated with the docstring.
+        content (str): The docstring content.
+    """
+
     definition: Definition
     content: str
 
@@ -229,6 +236,21 @@ def _write_files(
     *,
     overwrite: bool,
 ) -> tuple[int, int]:
+    """Write pending docstrings to their source files.
+
+    Re-read each file and verify that pending definitions still match the source
+    before applying and writing docstrings. Log failures for files or definitions
+    that cannot be updated.
+
+    Args:
+        pending (dict[Path, list[_PendingDocstring]]): Docstrings to write,
+            grouped by source file.
+        overwrite (bool): Whether to include and replace existing docstrings.
+
+    Returns:
+        tuple[int, int]: The number of docstrings written and the number that
+        failed.
+    """
     written = 0
     failed = 0
     for path, items in sorted(pending.items()):
@@ -291,6 +313,13 @@ def _write_files(
 
 
 def _write_source(path: Path, source: str, encoding: str) -> None:
+    """Write source text to a file using a temporary replacement.
+
+    Args:
+        path (Path): Destination file path.
+        source (str): Text to write.
+        encoding (str): Encoding used to convert the text to bytes.
+    """
     data = source.encode(encoding)
     descriptor, temporary_name = tempfile.mkstemp(
         dir=path.parent,

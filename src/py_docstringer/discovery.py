@@ -62,7 +62,22 @@ def discover_source(
 
 
 class _Collector(ast.NodeVisitor):
+    """Collect definitions while traversing an abstract syntax tree.
+
+    Records classes, functions, and methods, including nested definitions. Documented definitions are included only when `include_documented` is enabled.
+
+    Attributes:
+        definitions (list[Definition]): Definitions collected during traversal.
+    """
+
     def __init__(self, path: Path, lines: list[str], *, include_documented: bool) -> None:
+        """Initialize the collector state.
+
+        Args:
+            path (Path): Source file path.
+            lines (list[str]): Lines of source code.
+            include_documented (bool): Whether to include documented definitions.
+        """
         self._path = path
         self._lines = lines
         self._include_documented = include_documented
@@ -70,18 +85,49 @@ class _Collector(ast.NodeVisitor):
         self.definitions: list[Definition] = []
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        """Record a class definition and visit its contents.
+
+        Args:
+            node (ast.ClassDef): The class definition to record and traverse.
+
+        Returns:
+            None: This method does not return a value.
+        """
         self._record(node, "class")
         self._scopes.append(node)
         self.generic_visit(node)
         self._scopes.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        """Delegate a function definition node to the function visitor.
+
+        Args:
+            node (ast.FunctionDef): Function definition node to visit.
+        """
         self._visit_function(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        """Visit an asynchronous function definition.
+
+        Args:
+            node (ast.AsyncFunctionDef): The function definition to visit.
+
+        Returns:
+            None: This method does not return a value.
+        """
         self._visit_function(node)
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        """Record and traverse a function definition.
+
+        Classify the definition as a method when the current scope is a class, otherwise as a function. Add it to the scope while visiting its contents.
+
+        Args:
+            node (ast.FunctionDef | ast.AsyncFunctionDef): The function definition to visit.
+
+        Returns:
+            None
+        """
         kind: DefinitionKind = (
             "method" if self._scopes and isinstance(self._scopes[-1], ast.ClassDef) else "function"
         )
@@ -91,6 +137,15 @@ class _Collector(ast.NodeVisitor):
         self._scopes.pop()
 
     def _record(self, node: DefinitionNode, kind: DefinitionKind) -> None:
+        """Record a definition unless documented definitions are excluded.
+
+        Args:
+            node (DefinitionNode): Definition node to record.
+            kind (DefinitionKind): Kind of definition to record.
+
+        Returns:
+            None: This method does not return a value.
+        """
         has_docstring = ast.get_docstring(node, clean=False) is not None
         if has_docstring and not self._include_documented:
             return

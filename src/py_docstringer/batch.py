@@ -85,11 +85,28 @@ class OpenRouterTransport:
     """A BatchTransport backed by the OpenRouter Python SDK."""
 
     def __init__(self, client: OpenRouter, model: str) -> None:
+        """Initialize the transport with an OpenRouter client and model.
+
+        Args:
+            client (OpenRouter): The OpenRouter client to use.
+            model (str): The model identifier.
+        """
         _ensure_batch_body_field_order()
         self._client = client
         self._model = model
 
     def create(self, requests: Sequence[BatchRequest]) -> BatchSubmission:
+        """Submit chat completion requests as an OpenRouter batch.
+
+        Args:
+            requests (Sequence[BatchRequest]): Requests to include in the batch.
+
+        Returns:
+            BatchSubmission: The submitted batch.
+
+        Raises:
+            BatchError: If batch submission fails.
+        """
         try:
             batch = self._client.batch.create_batches(
                 endpoint="/v1/chat/completions",
@@ -111,6 +128,17 @@ class OpenRouterTransport:
         return _to_submission(batch)
 
     def fetch(self, batch_id: str) -> BatchSubmission:
+        """Fetch a batch submission by its identifier.
+
+        Args:
+            batch_id (str): Identifier of the batch to fetch.
+
+        Returns:
+            BatchSubmission: The fetched batch submission.
+
+        Raises:
+            BatchError: If the batch cannot be fetched.
+        """
         try:
             batch = self._client.batch.get_batches(id=batch_id)
         except Exception as exc:
@@ -120,6 +148,14 @@ class OpenRouterTransport:
 
 @dataclass(frozen=True, slots=True)
 class _PendingBatch:
+    """Represent a batch awaiting completion.
+
+    Attributes:
+        requests (tuple[BatchRequest, ...]): Requests included in the batch.
+        submission (BatchSubmission): Submission associated with the batch.
+        deadline (float): Deadline for the batch.
+    """
+
     requests: tuple[BatchRequest, ...]
     submission: BatchSubmission
     deadline: float
@@ -206,16 +242,42 @@ def run_batches(
 
 
 def _chunks(requests: Sequence[BatchRequest], size: int) -> list[list[BatchRequest]]:
+    """Split requests into chunks of the specified size.
+
+    Args:
+        requests (Sequence[BatchRequest]): Requests to split.
+        size (int): Maximum number of requests per chunk.
+
+    Returns:
+        list[list[BatchRequest]]: The requests grouped into chunks.
+    """
     return [list(requests[start : start + size]) for start in range(0, len(requests), size)]
 
 
 def _is_complete(submission: BatchSubmission) -> bool:
+    """Check whether a batch submission is complete.
+
+    Args:
+        submission (BatchSubmission): Submission to check.
+
+    Returns:
+        bool: Whether the submission has a final status and, if completed, has results.
+    """
     if submission.status not in FINAL_STATUSES:
         return False
     return not (submission.status == "completed" and submission.results is None)
 
 
 def _collect(item: _PendingBatch, results: dict[str, BatchResult]) -> None:
+    """Collect results for a completed batch or record failures for an unsuccessful one.
+
+    Args:
+        item (_PendingBatch): Pending batch containing the submission and its requests.
+        results (dict[str, BatchResult]): Mapping to update with results keyed by custom ID.
+
+    Returns:
+        None: Results are added to the supplied mapping.
+    """
     submission = item.submission
     if submission.status != "completed":
         detail = f": {submission.error}" if submission.error else ""
@@ -242,6 +304,15 @@ def _failures(
     requests: Sequence[BatchRequest],
     message: str,
 ) -> dict[str, BatchResult]:
+    """Build an error result for each request.
+
+    Args:
+        requests (Sequence[BatchRequest]): Requests to create error results for.
+        message (str): Error message to assign to each result.
+
+    Returns:
+        dict[str, BatchResult]: Error results keyed by request custom ID.
+    """
     return {
         request.custom_id: BatchResult(custom_id=request.custom_id, error=message)
         for request in requests
@@ -249,6 +320,14 @@ def _failures(
 
 
 def _to_submission(batch: BatchObject) -> BatchSubmission:
+    """Convert a batch object to a submission.
+
+    Args:
+        batch (BatchObject): Batch object to convert.
+
+    Returns:
+        BatchSubmission: Submission containing the batch ID and status, converted results if present, and the error message if present.
+    """
     results = None
     if batch.results is not None:
         results = tuple(_to_result(result) for result in batch.results)
@@ -257,12 +336,28 @@ def _to_submission(batch: BatchObject) -> BatchSubmission:
 
 
 def _to_result(result: Result) -> BatchResult:
+    """Convert a result to a batch result.
+
+    Args:
+        result (Result): The result to convert.
+
+    Returns:
+        BatchResult: A result containing the error message if an error is present, or the chat content otherwise.
+    """
     if result.error is not None:
         return BatchResult(custom_id=result.custom_id, error=result.error.message)
     return BatchResult(custom_id=result.custom_id, content=_chat_content(result))
 
 
 def _chat_content(result: Result) -> str | None:
+    """Extract the first nonempty chat completion message.
+
+    Args:
+        result (Result): The result containing a response to inspect.
+
+    Returns:
+        str | None: The first nonempty message content, or `None` if no chat completion content is available.
+    """
     if result.response is None:
         return None
     body = result.response.body

@@ -20,6 +20,14 @@ _FENCE_RE = re.compile(
 
 @dataclass(frozen=True, slots=True)
 class _Edit:
+    """Represent a text edit with a source range and replacement text.
+
+    Attributes:
+        start (int): Start offset of the range.
+        end (int): End offset of the range.
+        text (str): Replacement text.
+    """
+
     start: int
     end: int
     text: str
@@ -136,6 +144,15 @@ def apply_docstrings(
 
 
 def _literal_docstring(text: str) -> str | None:
+    """Parse text as a string literal when it has a recognized prefix.
+
+    Args:
+        text (str): Text to evaluate as a literal.
+
+    Returns:
+        str | None: The evaluated string, or None if the text does not begin with a
+        recognized string-literal prefix or does not evaluate to a string.
+    """
     lowered = text.lower()
     starts_with_literal = lowered.startswith(('"""', "'''", 'r"""', "r'''", 'u"""', "u'''"))
     if not starts_with_literal:
@@ -148,6 +165,16 @@ def _literal_docstring(text: str) -> str | None:
 
 
 def _strip_delimiters(text: str) -> str:
+    """Strip recognized string-literal delimiters from text.
+
+    Recognize the configured delimiters with optional `r`, `R`, `u`, or `U` prefixes.
+
+    Args:
+        text (str): Text that may begin and end with a recognized delimiter.
+
+    Returns:
+        str: Text with a recognized opening delimiter and, if present, its matching closing delimiter removed.
+    """
     for prefix in ("", "r", "R", "u", "U"):
         for delimiter in _DELIMITERS:
             opening = prefix + delimiter
@@ -160,6 +187,14 @@ def _strip_delimiters(text: str) -> str:
 
 
 def _escape(text: str) -> str:
+    """Escape backslashes and triple double quotes in text.
+
+    Args:
+        text (str): The text to escape.
+
+    Returns:
+        str: The escaped text.
+    """
     return text.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
 
 
@@ -170,6 +205,23 @@ def _build_edit(
     filename: str,
     newline: str,
 ) -> _Edit:
+    """Build an edit that inserts a docstring into a definition.
+
+    Determine the insertion point from the definition's first body statement and render the provided content using the specified newline convention. Handle both inline and indented suites.
+
+    Args:
+        node (ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef): Definition to edit.
+        lines (list[str]): Source lines used to locate the insertion point.
+        content (str): Docstring content to render.
+        filename (str): Filename included in error messages.
+        newline (str): Newline sequence to use in the rendered edit.
+
+    Returns:
+        _Edit: Edit describing the source range to replace and the replacement text.
+
+    Raises:
+        DocstringApplicationError: If the definition has no body, its body cannot be located, or the end of an inline signature cannot be found.
+    """
     if not node.body:
         raise DocstringApplicationError(f"{filename}:{node.lineno}: definition has no body")
 
@@ -214,6 +266,27 @@ def _build_replacement_edit(
     filename: str,
     newline: str,
 ) -> _Edit:
+    """Build an edit that replaces an existing docstring.
+
+    Render the replacement content using the existing docstring's location and
+    indentation, preserving surrounding text.
+
+    Args:
+        node (ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef): Definition
+            whose existing docstring will be replaced.
+        lines (list[str]): Source lines containing the definition.
+        content (str): Replacement docstring content.
+        filename (str): Filename used in error messages.
+        newline (str): Newline sequence used when rendering the replacement.
+
+    Returns:
+        _Edit: Edit describing the replacement's source range and text.
+
+    Raises:
+        DocstringApplicationError: If the definition has no body, its first
+            statement is not a string docstring, or the docstring's source
+            location cannot be determined.
+    """
     if not node.body:
         raise DocstringApplicationError(f"{filename}:{node.lineno}: definition has no body")
 
@@ -267,6 +340,15 @@ def _build_replacement_edit(
 
 
 def _render_inline_docstring(content: str) -> str:
+    """Render content as a single-line triple-quoted docstring.
+
+    Args:
+        content (str): The content to escape and render.
+
+    Returns:
+        str: The content wrapped in triple double quotes, with newlines replaced
+        by literal `\\n` sequences and a trailing double quote escaped.
+    """
     escaped = _escape(content).replace("\n", "\\n")
     if escaped.endswith('"'):
         escaped = f'{escaped[:-1]}\\"'
@@ -274,6 +356,15 @@ def _render_inline_docstring(content: str) -> str:
 
 
 def _character_column(line: str, byte_offset: int) -> int:
+    """Return the character column corresponding to a UTF-8 byte offset.
+
+    Args:
+        line (str): The line to measure.
+        byte_offset (int): The byte offset within the UTF-8 encoding of the line.
+
+    Returns:
+        int: The number of characters before the byte offset, or 0 if the offset is nonpositive.
+    """
     if byte_offset <= 0:
         return 0
     encoded = line.encode("utf-8")
