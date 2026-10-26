@@ -65,9 +65,70 @@ def normalize_docstring(raw: str) -> str:
     return first + "\n" + remainder.rstrip("\n")
 
 
-def render_docstring(content: str, indent: str, *, newline: str = "\n") -> str:
+def _wrap_content(content: str, indent: str, max_line_length: int) -> str:
+    """Wrap docstring content lines that would exceed the source line limit."""
+
+    lines = content.split("\n")
+    single_line = len(lines) == 1
+    wrapped: list[str] = []
+
+    for index, line in enumerate(lines):
+        if not line:
+            wrapped.append(line)
+            continue
+        if single_line:
+            overhead = 6
+        elif index == 0:
+            overhead = 3
+        else:
+            overhead = 0
+        width = max_line_length - len(indent) - overhead
+        if width <= 0 or len(indent) + len(line) + overhead <= max_line_length:
+            wrapped.append(line)
+            continue
+
+        leading = line[: len(line) - len(line.lstrip())]
+        text = line[len(leading) :]
+        if not text or width <= len(leading):
+            wrapped.append(line)
+            continue
+
+        pieces = textwrap.wrap(
+            text,
+            width=width,
+            initial_indent=leading,
+            subsequent_indent=leading + "    ",
+            break_long_words=False,
+            break_on_hyphens=False,
+            replace_whitespace=False,
+            drop_whitespace=True,
+        )
+        wrapped.extend(pieces or [line])
+
+    return "\n".join(wrapped)
+
+
+def _ensure_summary_separator(content: str) -> str:
+    """Insert a blank line after the summary when description text follows it."""
+
+    lines = content.split("\n")
+    if len(lines) > 1 and lines[1].strip():
+        lines.insert(1, "")
+    return "\n".join(lines)
+
+
+def render_docstring(
+    content: str,
+    indent: str,
+    *,
+    newline: str = "\n",
+    max_line_length: int | None = None,
+) -> str:
     """Render docstring content as an indented Python string literal."""
 
+    if max_line_length is not None:
+        content = _wrap_content(content, indent, max_line_length)
+    content = _ensure_summary_separator(content)
     lines = content.split("\n")
     if len(lines) == 1:
         escaped = _escape(lines[0])
@@ -87,6 +148,7 @@ def apply_docstrings(
     *,
     filename: str = "<unknown>",
     overwrite: bool = False,
+    max_line_length: int | None = None,
 ) -> str:
     """Insert or replace docstrings keyed by definition line number."""
 
@@ -114,10 +176,20 @@ def apply_docstrings(
                         docstrings[node.lineno],
                         filename,
                         newline,
+                        max_line_length,
                     )
                 )
             continue
-        edits.append(_build_edit(node, lines, docstrings[node.lineno], filename, newline))
+        edits.append(
+            _build_edit(
+                node,
+                lines,
+                docstrings[node.lineno],
+                filename,
+                newline,
+                max_line_length,
+            )
+        )
 
     missing = set(docstrings) - seen
     if missing:
@@ -204,6 +276,7 @@ def _build_edit(
     content: str,
     filename: str,
     newline: str,
+    max_line_length: int | None,
 ) -> _Edit:
     """Build an edit that inserts a docstring into a definition.
 
@@ -246,7 +319,12 @@ def _build_edit(
             )
         line_indent = re.match(r"[ \t]*", line)
         body_indent = (line_indent.group(0) if line_indent else "") + "    "
-        rendered = render_docstring(content, body_indent, newline=newline)
+        rendered = render_docstring(
+            content,
+            body_indent,
+            newline=newline,
+            max_line_length=max_line_length,
+        )
         text = f"{prefix[: colon + 1]}{newline}{rendered}{body_indent}{line[statement_col:]}"
         return _Edit(start=line_index, end=line_index + 1, text=text)
 
@@ -255,6 +333,7 @@ def _build_edit(
         content,
         indent.group(0) if indent else "",
         newline=newline,
+        max_line_length=max_line_length,
     )
     return _Edit(start=line_index, end=line_index, text=docstring)
 
@@ -265,6 +344,7 @@ def _build_replacement_edit(
     content: str,
     filename: str,
     newline: str,
+    max_line_length: int | None,
 ) -> _Edit:
     """Build an edit that replaces an existing docstring.
 
@@ -321,38 +401,46 @@ def _build_replacement_edit(
     line_indent = re.match(r"[ \t]*", start_line)
     line_indent_text = line_indent.group(0) if line_indent else ""
     inline = bool(prefix.strip())
-    doc_indent = line_indent_text + "    " if inline else prefix
 
-    if inline and "\n" in content:
-        rendered = _render_inline_docstring(content)
-    else:
-        rendered = render_docstring(content, doc_indent, newline=newline)
-        if rendered.endswith(newline):
-            rendered = rendered[: -len(newline)]
-        if doc_indent and rendered.startswith(doc_indent):
-            rendered = rendered[len(doc_indent) :]
+    if inline:
+        colon = prefix.rfind(":")
+        if colon == -1:
+            raise DocstringApplicationError(
+                f"{filename}:{node.lineno}: could not locate the end of the signature"
+            )
+        body_indent = line_indent_text + "    "
+        rendered = render_docstring(
+            content,
+            body_indent,
+            newline=newline,
+            max_line_length=max_line_length,
+        )
+        rest = end_line[end_column:].lstrip(" \t")
+        if rest.startswith(";"):
+            rest = rest[1:].lstrip(" \t")
+        rest = rest.rstrip("\r\n")
+        text = f"{prefix[: colon + 1]}{newline}{rendered}"
+        if rest:
+            text += f"{body_indent}{rest}{newline}"
+        return _Edit(start=start_index, end=end_index + 1, text=text)
+
+    doc_indent = prefix
+    rendered = render_docstring(
+        content,
+        doc_indent,
+        newline=newline,
+        max_line_length=max_line_length,
+    )
+    if rendered.endswith(newline):
+        rendered = rendered[: -len(newline)]
+    if doc_indent and rendered.startswith(doc_indent):
+        rendered = rendered[len(doc_indent) :]
 
     return _Edit(
         start=start_index,
         end=end_index + 1,
         text=prefix + rendered + end_line[end_column:],
     )
-
-
-def _render_inline_docstring(content: str) -> str:
-    """Render content as a single-line triple-quoted docstring.
-
-    Args:
-        content (str): The content to escape and render.
-
-    Returns:
-        str: The content wrapped in triple double quotes, with newlines replaced
-        by literal `\\n` sequences and a trailing double quote escaped.
-    """
-    escaped = _escape(content).replace("\n", "\\n")
-    if escaped.endswith('"'):
-        escaped = f'{escaped[:-1]}\\"'
-    return f'"""{escaped}"""'
 
 
 def _character_column(line: str, byte_offset: int) -> int:

@@ -21,7 +21,12 @@ Example only when they apply.
 effects, exceptions, or return values.
 - For a class, describe its purpose and public attributes. Document constructor \
 arguments in __init__ rather than repeating them in the class docstring.
-- Keep line length reasonable and indent section content with four spaces.
+- Do not wrap or manually break lines. Write each paragraph and each Args, Returns, \
+Yields, Raises, Attributes, or Example entry as one unbroken line; the caller wraps long \
+lines afterward.
+- Indent section content with four spaces.
+- Use only ASCII characters. Do not use non-ASCII punctuation, symbols, accents, emoji, \
+or typographic quotes; use plain ASCII equivalents.
 - Do not wrap the result in quotation marks.
 """
 

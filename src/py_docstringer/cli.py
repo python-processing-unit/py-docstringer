@@ -31,6 +31,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--timeout-hours must be greater than zero")
     if args.batch_size <= 0:
         parser.error("--batch-size must be greater than zero")
+    if args.max_line_length <= 0:
+        parser.error("--max-line-length must be greater than zero")
 
     logging.basicConfig(
         level=logging.WARNING if args.quiet else logging.INFO,
@@ -68,6 +70,7 @@ def _run(args: argparse.Namespace) -> Summary:
         "poll_interval": args.poll_interval,
         "timeout": args.timeout_hours * 3600,
         "batch_size": args.batch_size,
+        "max_line_length": args.max_line_length,
         "overwrite": args.overwrite,
     }
 
@@ -147,6 +150,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=500,
         help="maximum requests per batch (default: 500)",
+    )
+    parser.add_argument(
+        "--max-line-length",
+        type=int,
+        default=88,
+        help="maximum docstring source line length (default: 88)",
     )
     parser.add_argument(
         "--overwrite",

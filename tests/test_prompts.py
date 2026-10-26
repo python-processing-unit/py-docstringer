@@ -61,3 +61,6 @@ def test_system_prompt_requests_google_style() -> None:
     assert "Args" in SYSTEM_PROMPT
     assert "Returns" in SYSTEM_PROMPT
     assert "triple quotes" in SYSTEM_PROMPT
+    assert "Do not wrap" in SYSTEM_PROMPT
+    assert "ASCII" in SYSTEM_PROMPT
+    assert "non-ASCII" in SYSTEM_PROMPT

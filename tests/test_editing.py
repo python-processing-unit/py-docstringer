@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import shutil
+import subprocess
 from textwrap import dedent
 
 import pytest
@@ -246,7 +248,7 @@ def test_overwrite_replaces_inline_docstring() -> None:
     assert ast.get_docstring(_find(updated, "function")) == content
     assert "Old summary" not in updated
     assert "return 1" in updated
-    assert updated.startswith('def function(): """New summary.\\n')
+    assert updated.startswith('def function():\n    """New summary.')
 
 
 def test_overwrite_adds_docstrings_that_are_missing() -> None:
@@ -259,6 +261,111 @@ def test_overwrite_adds_docstrings_that_are_missing() -> None:
     )
 
     assert ast.get_docstring(_find(updated, "function")) == "New summary."
+
+
+def test_wraps_long_docstring_lines_at_spaces() -> None:
+    content = (
+        "This is a long summary that should be wrapped because it exceeds the "
+        "configured line length by a lot."
+    )
+    source = "def function():\n    return 1\n"
+
+    updated = apply_docstrings(source, {1: content}, max_line_length=40)
+
+    docstring = ast.get_docstring(_find(updated, "function"))
+    assert docstring is not None
+    assert " ".join(docstring.split()) == content
+    assert all(len(line) <= 40 for line in updated.splitlines())
+
+
+def test_does_not_break_long_words() -> None:
+    word = "x" * 60
+    content = f"See {word}."
+    source = "def function():\n    return 1\n"
+
+    updated = apply_docstrings(source, {1: content}, max_line_length=40)
+
+    assert word in updated
+    assert all(len(line) <= 40 for line in updated.splitlines() if word not in line)
+
+
+def test_wraps_google_style_section_content() -> None:
+    content = (
+        "Summary.\n\nArgs:\n"
+        "    value: A long parameter description that needs wrapping because it is too long."
+    )
+    source = "def function(value):\n    return value\n"
+
+    updated = apply_docstrings(source, {1: content}, max_line_length=50)
+
+    docstring = ast.get_docstring(_find(updated, "function"))
+    assert docstring is not None
+    assert " ".join(docstring.split()) == " ".join(content.split())
+    assert all(len(line) <= 50 for line in updated.splitlines())
+    assert "\n            " in updated
+
+
+def test_wraps_single_line_docstring_before_rendering() -> None:
+    content = "A single long line that has enough words to need wrapping at this width."
+    source = "def function():\n    return 1\n"
+
+    updated = apply_docstrings(source, {1: content}, max_line_length=40)
+
+    assert updated.count('"""') == 2
+    assert updated.count("\n") > 3
+    assert all(len(line) <= 40 for line in updated.splitlines())
+
+
+def test_inserts_blank_line_after_summary_for_d205() -> None:
+    content = "Return a value.\nMore detail without a blank line."
+    source = "def function():\n    return 1\n"
+
+    updated = apply_docstrings(source, {1: content})
+
+    docstring = ast.get_docstring(_find(updated, "function"))
+    assert docstring is not None
+    assert docstring.splitlines()[0] == "Return a value."
+    assert docstring.splitlines()[1] == ""
+    assert docstring.splitlines()[2] == "More detail without a blank line."
+
+
+def test_wrapped_summary_keeps_blank_line_after_first_line() -> None:
+    content = (
+        "This is a long summary that should be wrapped and still satisfy the "
+        "docstring summary separator rule."
+    )
+    source = "def function():\n    return 1\n"
+
+    updated = apply_docstrings(source, {1: content}, max_line_length=40)
+
+    docstring = ast.get_docstring(_find(updated, "function"))
+    assert docstring is not None
+    assert docstring.splitlines()[1] == ""
+    assert all(len(line) <= 40 for line in updated.splitlines())
+
+
+def test_generated_docstring_passes_ruff_d205(tmp_path) -> None:
+    ruff = shutil.which("ruff")
+    if ruff is None:
+        pytest.skip("ruff is not available")
+
+    content = (
+        "This is a long summary that should be wrapped and still satisfy the "
+        "docstring summary separator rule."
+    )
+    source = "def function():\n    return 1\n"
+    updated = apply_docstrings(source, {1: content}, max_line_length=40)
+    path = tmp_path / "example.py"
+    path.write_text(updated, encoding="utf-8")
+
+    result = subprocess.run(
+        [ruff, "check", "--isolated", "--select", "D205", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_skips_definitions_that_already_have_docstrings() -> None:
