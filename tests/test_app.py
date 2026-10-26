@@ -38,13 +38,27 @@ class _CompletedTransport:
         raise AssertionError("fetch should not be called for a completed batch")
 
 
-def _run(folder, transport, *, overwrite: bool = False):
+def _find_function(source: str, name: str) -> ast.FunctionDef:
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f"{name} not found")
+
+
+def _run(
+    folder,
+    transport,
+    *,
+    overwrite: bool = False,
+    max_line_length: int = 88,
+):
     return document_folder(
         folder,
         transport,
         poll_interval=1,
         timeout=60,
         batch_size=10,
+        max_line_length=max_line_length,
         overwrite=overwrite,
     )
 
@@ -297,6 +311,46 @@ def test_document_folder_does_not_truncate_on_encoding_failure(tmp_path) -> None
     assert summary.written == 0
     assert summary.failed == 1
     assert path.read_bytes() == original.encode("latin-1")
+
+
+def test_document_folder_wraps_to_max_line_length(tmp_path) -> None:
+    path = tmp_path / "example.py"
+    path.write_text("def function():\n    return 1\n", encoding="utf-8")
+    content = (
+        "This is a long summary that should be wrapped because it exceeds the "
+        "configured line length by a lot."
+    )
+
+    summary = _run(
+        tmp_path,
+        _CompletedTransport(content=content),
+        max_line_length=40,
+    )
+
+    assert summary.written == 1
+    updated = path.read_text(encoding="utf-8")
+    assert all(len(line) <= 40 for line in updated.splitlines())
+    docstring = ast.get_docstring(_find_function(updated, "function"))
+    assert docstring is not None
+    assert " ".join(docstring.split()) == content
+
+
+def test_document_folder_uses_default_line_length(tmp_path) -> None:
+    path = tmp_path / "example.py"
+    path.write_text("def function():\n    return 1\n", encoding="utf-8")
+    content = " ".join(["word"] * 40)
+
+    transport = _CompletedTransport(content=content)
+    document_folder(
+        tmp_path,
+        transport,
+        poll_interval=1,
+        timeout=60,
+        batch_size=10,
+    )
+
+    updated = path.read_text(encoding="utf-8")
+    assert all(len(line) <= 88 for line in updated.splitlines())
 
 
 def test_find_python_files_skips_generated_directories(tmp_path) -> None:

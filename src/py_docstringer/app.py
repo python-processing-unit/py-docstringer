@@ -103,6 +103,7 @@ def document_folder(
     poll_interval: float,
     timeout: float,
     batch_size: int,
+    max_line_length: int = 88,
     overwrite: bool = False,
     dry_run: bool = False,
 ) -> Summary:
@@ -220,7 +221,11 @@ def document_folder(
                 exc,
             )
 
-    written, write_failures = _write_files(docstrings_by_path, overwrite=overwrite)
+    written, write_failures = _write_files(
+        docstrings_by_path,
+        overwrite=overwrite,
+        max_line_length=max_line_length,
+    )
     failed += write_failures
     return Summary(
         files=len(files),
@@ -235,6 +240,7 @@ def _write_files(
     pending: dict[Path, list[_PendingDocstring]],
     *,
     overwrite: bool,
+    max_line_length: int,
 ) -> tuple[int, int]:
     """Write pending docstrings to their source files.
 
@@ -297,6 +303,7 @@ def _write_files(
                 insertions,
                 filename=str(path),
                 overwrite=overwrite,
+                max_line_length=max_line_length,
             )
             _write_source(path, updated, encoding)
             written += len(insertions)

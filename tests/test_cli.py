@@ -20,6 +20,13 @@ def test_overwrite_flag(tmp_path) -> None:
     assert parser.parse_args([str(tmp_path), "--overwrite"]).overwrite is True
 
 
+def test_max_line_length_flag(tmp_path) -> None:
+    parser = _build_parser()
+
+    assert parser.parse_args([str(tmp_path)]).max_line_length == 88
+    assert parser.parse_args([str(tmp_path), "--max-line-length", "40"]).max_line_length == 40
+
+
 def test_overwrite_dry_run_lists_existing_docstrings(tmp_path, capsys) -> None:
     (tmp_path / "example.py").write_text(
         'def function():\n    """Old summary."""\n    return 1\n',

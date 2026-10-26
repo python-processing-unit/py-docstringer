@@ -21,7 +21,8 @@ uv run add-docstrings .\src
 The command scans the folder recursively for `.py` files, skips definitions that
 already have a docstring, submits one batch request per definition, waits for the batch
 to finish, and writes the generated docstrings back to the same files. Pass
-`--overwrite` to rewrite existing docstrings as well as add missing ones.
+`--overwrite` to rewrite existing docstrings as well as add missing ones. Generated
+docstrings are wrapped at spaces to `--max-line-length` (default: 88 characters).
 
 ```powershell
 uv run add-docstrings .\src --overwrite
@@ -36,7 +37,8 @@ batch cost.
 ```text
 usage: add-docstrings [-h] [--model MODEL] [--poll-interval POLL_INTERVAL]
                       [--timeout-hours TIMEOUT_HOURS] [--batch-size BATCH_SIZE]
-                      [--overwrite] [--dry-run] [-q]
+                      [--max-line-length MAX_LINE_LENGTH] [--overwrite] [--dry-run]
+                      [-q]
                       folder
 
 positional arguments:
@@ -47,6 +49,7 @@ options:
   --poll-interval N     seconds between batch status checks (default: 30)
   --timeout-hours N     maximum hours to wait for each batch (default: 26)
   --batch-size N        maximum requests per batch (default: 500)
+  --max-line-length N   maximum docstring source line length (default: 88)
   --overwrite           replace existing docstrings instead of leaving them unchanged
   --dry-run             list definitions without calling OpenRouter
   -q, --quiet           only print warnings and errors
