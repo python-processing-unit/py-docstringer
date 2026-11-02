@@ -3,6 +3,8 @@ name = "py-docstringer"
 version = "0.1.0"
 description = "Add Google-style docstrings to Python files with OpenRouter batch requests."
 readme = "README.md"
+license = "Unlicense"
+license-files = ["UNLICENSE"]
 authors = [
     { name = "python-processing-unit" }
 ]

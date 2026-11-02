@@ -73,3 +73,8 @@ uv run pytest -vv
 
 `pyproject.toml` configures pytest with `-n auto`, so tests run in parallel. The GitHub
 Actions workflow in `.github/workflows/ci.yml` runs the same four checks.
+
+## License
+
+This project is released into the public domain under the [Unlicense](UNLICENSE).
+
